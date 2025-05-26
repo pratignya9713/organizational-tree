@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Organization Tree</title>
+    
+    <!-- React and ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Bootstrap for styling -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <style>
+        .org-tree {
+            margin-top: 30px;
+        }
+        .node {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            margin: 5px;
+            background-color: #305D7F;
+            color: white;
+            display: inline-block;
+            cursor: pointer;
+        }
+        .node-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .node-children {
+            display: flex;
+            justify-content: center;
+        }
+        .line-down {
+            width: 2px;
+            height: 20px;
+            background-color: #333;
+        }
+        .form-container {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mt-4 mb-4">Organization Tree</h1>
+        <div id="root"></div>
+    </div>
+    
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        
+        function App() {
+            const [people, setPeople] = useState([]);
+            const [treeData, setTreeData] = useState([]);
+            const [selectedPerson, setSelectedPerson] = useState(null);
+            const [formMode, setFormMode] = useState(null); // 'add', 'edit', or null
+            const [formData, setFormData] = useState({ name: '', manager: '' });
+            
+            // Fetch all people
+            useEffect(() => {
+                fetchPeople();
+                fetchTreeData();
+            }, []);
+            
+            const fetchPeople = async () => {
+                try {
+                    const response = await fetch('/api/people/');
+                    if (response.ok) {
+                        const data = await response.json();
+                        setPeople(data);
+                    }
+                } catch (error) {
+                    console.error('Error fetching people:', error);
+                }
+            };
+            
+            const fetchTreeData = async () => {
+                try {
+                    const response = await fetch('/api/people/tree/');
+                    if (response.ok) {
+                        const data = await response.json();
+                        setTreeData(data);
+                    }
+                } catch (error) {
+                    console.error('Error fetching tree data:', error);
+                }
+            };
+            
+            const handlePersonClick = async (person) => {
+                try {
+                    const response = await fetch(`/api/people/${person.id}/`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        setSelectedPerson(data);
+                    }
+                } catch (error) {
+                    console.error('Error fetching person details:', error);
+                }
+            };
+            
+            const handleAddClick = () => {
+                setFormMode('add');
+                setFormData({ name: '', manager: '' });
+            };
+            
+            const handleEditClick = () => {
+                if (selectedPerson) {
+                    setFormMode('edit');
+                    setFormData({
+                        name: selectedPerson.name,
+                        manager: selectedPerson.manager || '',
+                    });
+                }
+            };
+            
+            const handleDeleteClick = async () => {
+                if (selectedPerson && confirm('Are you sure you want to delete this person?')) {
+                    try {
+                        const response = await fetch(`/api/people/${selectedPerson.id}/`, {
+                            method: 'DELETE',
+                        });
+                        if (response.ok) {
+                            setSelectedPerson(null);
+                            fetchPeople();
+                            fetchTreeData();
+                        }
+                    } catch (error) {
+                        console.error('Error deleting person:', error);
+                    }
+                }
+            };
+            
+            const handleFormSubmit = async (e) => {
+                e.preventDefault();
+                
+                const url = formMode === 'add' 
+                    ? '/api/people/' 
+                    : `/api/people/${selectedPerson.id}/`;
+                
+                const method = formMode === 'add' ? 'POST' : 'PUT';
+                
+                try {
+                    const response = await fetch(url, {
+                        method,
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            name: formData.name,
+                            manager: formData.manager === '' ? null : formData.manager,
+                        }),
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        setFormMode(null);
+                        fetchPeople();
+                        fetchTreeData();
+                        if (formMode === 'edit') {
+                            setSelectedPerson(data);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error submitting form:', error);
+                }
+            };
+            
+            const handleFormCancel = () => {
+                setFormMode(null);
+            };
+            
+            const handleFormChange = (e) => {
+                const { name, value } = e.target;
+                setFormData(prev => ({ ...prev, [name]: value }));
+            };
+            
+            // Recursive component to render the tree
+            const TreeNode = ({ node }) => {
+                return (
+                    <div className="node-container">
+                        <div className="node" onClick={() => handlePersonClick(node)}>
+                            {node.name}
+                        </div>
+                        {node.subordinates && node.subordinates.length > 0 && (
+                            <>
+                                <div className="line-down"></div>
+                                <div className="node-children">
+                                    {node.subordinates.map(child => (
+                                        <TreeNode key={child.id} node={child} />
+                                    ))}
+                                </div>
+                            </>
+                        )}
+                    </div>
+                );
+            };
+            
+            return (
+                <div>
+                    <div className="row">
+                        <div className="col-md-8">
+                            <div className="org-tree">
+                                {treeData.map(root => (
+                                    <TreeNode key={root.id} node={root} />
+                                ))}
+                            </div>
+                        </div>
+                        <div className="col-md-4">
+                            <div className="card">
+                                <div className="card-header">
+                                    <h5>Actions</h5>
+                                </div>
+                                <div className="card-body">
+                                    <button className="btn btn-primary me-2" onClick={handleAddClick}>Add</button>
+                                    <button className="btn btn-info me-2" onClick={handleEditClick} disabled={!selectedPerson}>Edit</button>
+                                    <button className="btn btn-danger" onClick={handleDeleteClick} disabled={!selectedPerson}>Delete</button>
+                                    
+                                    {selectedPerson && (
+                                        <div className="mt-3">
+                                            <h5>Selected Person</h5>
+                                            <p><strong>Name:</strong> {selectedPerson.name}</p>
+                                            <p>
+                                                <strong>Manager:</strong> {
+                                                    selectedPerson.manager ? 
+                                                    people.find(p => p.id === selectedPerson.manager)?.name : 
+                                                    'None'
+                                                }
+                                            </p>
+                                        </div>
+                                    )}
+                                    
+                                    {formMode && (
+                                        <div className="form-container mt-3">
+                                            <h5>{formMode === 'add' ? 'Add Person' : 'Edit Person'}</h5>
+                                            <form onSubmit={handleFormSubmit}>
+                                                <div className="mb-3">
+                                                    <label htmlFor="name" className="form-label">Name</label>
+                                                    <input 
+                                                        type="text" 
+                                                        className="form-control" 
+                                                        id="name" 
+                                                        name="name" 
+                                                        value={formData.name} 
+                                                        onChange={handleFormChange} 
+                                                        required 
+                                                    />
+                                                </div>
+                                                <div className="mb-3">
+                                                    <label htmlFor="manager" className="form-label">Manager</label>
+                                                    <select 
+                                                        className="form-control" 
+                                                        id="manager" 
+                                                        name="manager" 
+                                                        value={formData.manager} 
+                                                        onChange={handleFormChange}
+                                                    >
+                                                        <option value="">None (Root)</option>
+                                                        {people.filter(p => p.id !== (selectedPerson?.id || -1)).map(person => (
+                                                            <option key={person.id} value={person.id}>{person.name}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <button type="submit" className="btn btn-success me-2">Save</button>
+                                                <button type="button" className="btn btn-secondary" onClick={handleFormCancel}>Cancel</button>
+                                            </form>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+        
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html> 
